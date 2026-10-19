@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component type="desktop-application">
+  <id>@app-id@</id>
+  <name>Postrophe</name>
+  <summary>An elegant, distraction-free Markdown editor</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer_name>ch0305 and the Apostrophe contributors</developer_name>
+  <description>
+    <p>Postrophe is a GTK based distraction free Markdown editor. It is a fork of Apostrophe, originally created by Wolf Vollprecht and maintained by Manuel Genovés. It uses pandoc as backend for markdown parsing and offers a very clean and sleek user interface.</p>
+    <p>Compared to Apostrophe, this fork adds task list editing: insert and toggle checkboxes with keyboard shortcuts, continue lists when pressing Enter and click checkboxes in the preview to update the document. It also includes preview performance and scrolling improvements.</p>
+    <p>Exporting to PDF requires a LaTeX installation, for example the texlive packages available in most distributions.</p>
+  </description>
+  <launchable type="desktop-id">@app-id@.desktop</launchable>
+  <url type="homepage">https://github.com/ch0305/Postrophe</url>
+  <url type="bugtracker">https://github.com/ch0305/Postrophe/issues</url>
+  <url type="vcs-browser">https://github.com/ch0305/Postrophe</url>
+  <url type="help">https://github.com/ch0305/Postrophe</url>
+  <translation type="gettext">@gettext-package@</translation>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://raw.githubusercontent.com/ch0305/Postrophe/main/screenshots/main.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/ch0305/Postrophe/main/screenshots/main-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/ch0305/Postrophe/main/screenshots/formula.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/ch0305/Postrophe/main/screenshots/preview.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/ch0305/Postrophe/main/screenshots/focus.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release type="stable" version="2.5.0" date="2026-10-19T00:00:00Z">
+      <description>
+        <p>First Postrophe release. Based on Apostrophe 2.4, with:</p>
+        <ul>
+          <li>Task list editing: insert and toggle checkboxes with keyboard shortcuts</li>
+          <li>Continue task and ordered lists when pressing Enter</li>
+          <li>Clickable checkboxes in the preview that update the document</li>
+          <li>Preview updates no longer reload the page, so typing does not flash the preview</li>
+          <li>More stable scroll synchronization and less preview work while typing</li>
+          <li>Search and replace no longer crashes on invalid regular expressions</li>
+        </ul>
+      </description>
+    </release>
+    <release type="stable" version="2.4" date="2021-03-10T00:00:00Z">
+      <description>
+        <p>This release fixes the following bugs:</p>
+        <ul>
+          <li>Fixed a bug where the cursor could go over the bottom of the window</li>
+          <li>Fixed a bug where in certain circumstances the bottom line couldn't be clicked</li>
+          <li>Improved behaviour when dealing with unsaved files.</li>
+          <li>Improved start/end sentence detection in Focus Mode</li>
+          <li>Small improvements in the headerbar title</li>
+          <li>Cleaned a little bit the Shortcuts Window</li>
+        </ul>
+      </description>
+    </release>
+    <release type="stable" version="2.3" date="2021-03-01T00:00:00Z">
+      <description>
+        <p>This release adds the following features:</p>
+        <ul>
+          <li>New export dialog</li>
+          <li>Improved Reveal.js slideshow exports</li>
+          <li>Better input/output handling</li>
+          <li>Inhibit logout if the document is not saved</li>
+          <li>Migrate to xelatex</li>
+          <li>Better internal path handling</li>
+          <li>New animated progressbar on saving</li>
+          <li>Strict sandboxing support</li>
+        </ul>
+        <p>This release fixes the following bugs:</p>
+        <ul>
+          <li>Undo/redo improvements</li>
+          <li>Fixes for bad markdown parsing of unordered lists</li>
+        </ul>
+      </description>
+    </release>
+    <release type="stable" version="2.2.0.3" date="2020-05-04T00:00:00Z">
+      <description>
+        <p>This release fixes the following bugs:</p>
+        <ul>
+          <li>Better wording for some areas</li>
+          <li>Fixed some issues where Postrophe couldn't open files from CLI/context menu</li>
+          <li>Now Postrophe checks if there is unsaved work before exiting via CTRL + Q/W</li>
+          <li>Better parsing of weblinks and links to files</li>
+          <li>Fixed a bug where the bottom portion of the screen was insensitive to mouse input</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

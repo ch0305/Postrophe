@@ -1,0 +1,16 @@
+option(
+        'profile',
+        type: 'combo',
+        choices: [
+                'default',
+                'development'
+        ],
+        value: 'default'
+)
+
+option(
+        'sassc',
+        type: 'feature',
+        value: 'auto',
+        description: 'Rebuild styles using sassc'
+)
