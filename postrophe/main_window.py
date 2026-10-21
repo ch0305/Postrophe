@@ -71,6 +71,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         # Headerbars
         self.last_height = 0
+        self._last_headerbar_state = None
         self.headerbar = headerbars.MainHeaderbar(app)
         self.headerbar.hb_revealer.connect(
             "size_allocate", self.header_size_allocate)
@@ -158,6 +159,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stats_revealer.connect('enter_notify_event',
                                     self.reveal_bottombar)
 
+        # Escape, the window manager or a compositor gesture can leave
+        # fullscreen without going through the app action. Follow the
+        # actual window state so the headerbar and menu stay correct.
+        self.connect("window-state-event", self.on_window_state_event)
+
         self.new_document()
 
     def header_size_allocate(self, widget, allocation):
@@ -191,6 +197,35 @@ class MainWindow(Gtk.ApplicationWindow):
         if self.settings.get_value("autohide-headerbar"):
             self.hide_headerbar_bottombar()
 
+    def _set_fullscreen_ui(self, is_fullscreen):
+        """Show the fullscreen headerbar poller only in fullscreen."""
+
+        if is_fullscreen:
+            self.fs_headerbar.events.show()
+            self.fs_headerbar.hide_fs_hb()
+            self.headerbar_eventbox.hide()
+        else:
+            self.fs_headerbar.hide_fs_hb()
+            self.fs_headerbar.events.hide()
+            self.headerbar_eventbox.show()
+
+    def on_window_state_event(self, _widget, event):
+        """Keep the fullscreen action and UI in sync with the window."""
+
+        is_fullscreen = bool(
+            event.new_window_state & Gdk.WindowState.FULLSCREEN)
+
+        application = self.get_application()
+        action = (application.lookup_action("fullscreen")
+                  if application is not None else None)
+        if action is not None:
+            state = action.get_state()
+            if state is None or state.get_boolean() != is_fullscreen:
+                action.set_state(GLib.Variant.new_boolean(is_fullscreen))
+
+        self._set_fullscreen_ui(is_fullscreen)
+        return False
+
     def set_fullscreen(self, state):
         """Puts the application in fullscreen mode and show/hides
         the poller for motion in the top border
@@ -199,15 +234,12 @@ class MainWindow(Gtk.ApplicationWindow):
             state {almost bool} -- The desired fullscreen state of the window
         """
 
-        if state.get_boolean():
+        is_fullscreen = state.get_boolean()
+        if is_fullscreen:
             self.fullscreen()
-            self.fs_headerbar.events.show()
-            self.fs_headerbar.hide_fs_hb()
-            self.headerbar_eventbox.hide()
         else:
             self.unfullscreen()
-            self.fs_headerbar.events.hide()
-            self.headerbar_eventbox.show()
+        self._set_fullscreen_ui(is_fullscreen)
         self.text_view.grab_focus()
 
     def set_focus_mode(self, state):
@@ -660,6 +692,14 @@ class MainWindow(Gtk.ApplicationWindow):
             subtitle = self.current.path
         else:
             subtitle = ""
+
+        # update_headerbar_title() runs on every text change (for the
+        # unsaved marker). Setting the same title/subtitle again forces
+        # three headerbars and the window to relayout for no reason.
+        state = (title, subtitle)
+        if state == self._last_headerbar_state:
+            return
+        self._last_headerbar_state = state
 
         self.headerbar.hb.set_title(title)
         self.dm_headerbar.hb.set_title(title)

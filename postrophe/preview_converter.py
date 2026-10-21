@@ -1,3 +1,4 @@
+import subprocess
 from queue import Queue
 from threading import Thread
 
@@ -9,6 +10,34 @@ from postrophe.theme_switcher import Theme, ThemeSwitcher
 
 class PreviewConverter:
     """Converts markdown to html using a background thread."""
+
+    # Pandoc 3.12 deprecated --mathjax in favor of --math-method.
+    _mathjax_argument = None
+
+    @classmethod
+    def _get_mathjax_argument(cls):
+        if cls._mathjax_argument is not None:
+            return cls._mathjax_argument
+
+        argument = '--mathjax'
+        try:
+            version_output = subprocess.check_output(
+                ['pandoc', '--version'],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5)
+            version = version_output.splitlines()[0].split()[1]
+            major, minor = (
+                int(part) for part in version.split('.')[:2])
+            if (major, minor) >= (3, 12):
+                argument = '--math-method=mathjax'
+        except (OSError, subprocess.SubprocessError,
+                ValueError, IndexError):
+            # Keep the old spelling for older pandoc versions.
+            pass
+
+        cls._mathjax_argument = argument
+        return argument
 
     def __init__(self):
         super().__init__()
@@ -41,7 +70,7 @@ class PreviewConverter:
                     break
 
             args = ['--standalone',
-                    '--mathjax',
+                    self._get_mathjax_argument(),
                     '--css=' + Theme.get_current().web_css,
                     '--lua-filter=' +
                     helpers.get_media_path('/lua/relative_to_absolute.lua'),

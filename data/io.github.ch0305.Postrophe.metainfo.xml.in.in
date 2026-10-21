@@ -35,6 +35,19 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release type="stable" version="3.0.0" date="2026-10-22T00:00:00Z">
+      <description>
+        <p>This release fixes window sizing, the windowed preview, fullscreen state and typing performance:</p>
+        <ul>
+          <li>Split previews fit inside the monitor work area, keeping headerbar buttons reachable on scaled displays</li>
+          <li>Windowed preview is centered, sized to the monitor, repainted after mapping, and no longer black or off-screen</li>
+          <li>Closing the preview window is clean, without a BadDrawable X error</li>
+          <li>The fullscreen action and headerbar stay in sync when fullscreen is left with Esc or a compositor gesture</li>
+          <li>Faster typing: preview conversion is debounced and stale conversions are discarded, the hidden preview WebView is destroyed, and cursor movement and statistics do less work</li>
+          <li>MathJax 3 and 4 support, resilient scroll synchronization and no deprecation warning with pandoc 3.12 or newer</li>
+        </ul>
+      </description>
+    </release>
     <release type="stable" version="2.5.1" date="2026-10-22T00:00:00Z">
       <description>
         <p>This release fixes startup on Python 3.13 and newer:</p>

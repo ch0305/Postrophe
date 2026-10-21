@@ -1,3 +1,31 @@
+Version 3.0.0 (Postrophe)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+Released: 2026-10-22
+
+Features:
+- Windowed preview is now a centered transient window with its own
+  headerbar, sized to fit the monitor work area
+- The fullscreen action and headerbar follow the actual window state,
+  including leaving fullscreen with Esc or a compositor gesture
+- Faster typing: preview conversion is debounced to 400 ms and stale
+  conversions are discarded; the preview WebView is destroyed when hidden
+  instead of polling in the background; cursor movement no longer
+  reapplies all markup outside focus mode; statistics are counted after a
+  short pause rather than on every keypress
+
+Bugfixes:
+- Split previews no longer grow the window beyond the monitor work area,
+  which could push the headerbar buttons off-screen on scaled displays
+- Windowed preview no longer opens black or off-screen; WebKit is
+  repainted after the window is mapped
+- Switching between preview layouts now repaints the preview correctly
+- Closing the preview window no longer produces a BadDrawable X error
+- MathJax 3 and 4 are supported, and a MathJax error no longer disables
+  scroll synchronization
+- Pandoc 3.12 and newer no longer print the deprecated --mathjax warning
+- Background parser and counter IO watches are removed on shutdown,
+  avoiding an OSError traceback when closing the app
+
 Version 2.5.1 (Postrophe)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Released: 2026-10-22

@@ -45,13 +45,18 @@ class PreviewHandler:
     # Wait this long after the last edit before rebuilding the preview.
     # Converting on every keystroke makes the preview reload constantly,
     # which is expensive enough to make typing feel sluggish.
-    CONVERT_DELAY = 250  # ms
+    CONVERT_DELAY = 400  # ms
 
     def __init__(self, window, content, editor, text_view):
         self.text_view = text_view
 
         self.web_view = None
         self.web_view_pending_html = None
+
+        # Incremented every time the preview is shown or hidden. Results
+        # of conversions/loads started for an older generation are
+        # discarded instead of resurrecting a hidden preview.
+        self._generation = 0
 
         self.preview_converter = PreviewConverter()
         self.preview_renderer = PreviewRenderer(
@@ -74,7 +79,8 @@ class PreviewHandler:
 
     def show(self):
         self.__cancel_pending_conversion()
-        self.__show()
+        self._generation += 1
+        self.__show(generation=self._generation)
 
     def __cancel_pending_conversion(self):
         if self.convert_timeout_id:
@@ -89,10 +95,18 @@ class PreviewHandler:
 
     def __debounced_show(self):
         self.convert_timeout_id = None
+        if not self.shown:
+            return False
         self.__show(partial=True)
         return False
 
-    def __show(self, html=None, step=Step.CONVERT_HTML, partial=False):
+    def __show(self, html=None, step=Step.CONVERT_HTML, partial=False,
+                generation=None):
+        if generation is None:
+            generation = self._generation
+        if generation != self._generation:
+            return
+
         if step == Step.CONVERT_HTML:
             # First step: convert text to HTML.
             buf = self.text_view.get_buffer()
@@ -101,7 +115,7 @@ class PreviewHandler:
             # checkbox clicks map onto up-to-date text.
             self.preview_source_text = text
             self.preview_converter.convert(
-                text, self.__show, Step.LOAD_WEBVIEW, partial)
+                text, self.__show, Step.LOAD_WEBVIEW, partial, generation)
 
         elif step == Step.LOAD_WEBVIEW:
             # Second step: load HTML, or patch the current page.
@@ -199,39 +213,63 @@ class PreviewHandler:
             self.show()
 
     def hide(self):
-        if self.shown:
+        # Invalidate conversions/loads that are still in flight. Without
+        # this, a conversion finishing after hide() would create a new
+        # WebView and keep polling in the background.
+        self._generation += 1
+        self.__cancel_pending_conversion()
+
+        was_shown = self.shown
+        if was_shown:
             self.shown = False
 
-            self.__cancel_pending_conversion()
-            self.text_view.get_buffer().disconnect(self.text_changed_handler_id)
+            if self.text_changed_handler_id:
+                self.text_view.get_buffer().disconnect(
+                    self.text_changed_handler_id)
+                self.text_changed_handler_id = None
 
             # Carry the preview's scroll position back into the editor.
             # -1 means "preview not scrollable / not rendered"; writing
             # it would scroll the editor to the top.
-            scale = self.web_view.get_scroll_scale()
-            if scale >= 0:
-                GLib.idle_add(self.text_view.set_scroll_scale, scale)
-
-            self.preview_renderer.hide(self.web_view)
+            if self.web_view is not None:
+                scale = self.web_view.get_scroll_scale()
+                if scale >= 0:
+                    GLib.idle_add(self.text_view.set_scroll_scale, scale)
 
             if self.text_scroll_handler_id:
                 self.text_view.disconnect(self.text_scroll_handler_id)
                 self.text_scroll_handler_id = None
-            if self.web_scroll_handler_id:
+            if self.web_scroll_handler_id and self.web_view is not None:
                 self.web_view.disconnect(self.web_scroll_handler_id)
                 self.web_scroll_handler_id = None
 
-        if self.loading:
-            self.loading = False
-            self.page_ready = False
-            self.web_view_pending_html = None
-            self.web_view.destroy()
-            self.web_view = None
+        # Destroy the WebView before its parent window. WebKitGTK
+        # queries the GdkWindow while handling GTK events; if the
+        # toplevel is destroyed first, that becomes an X11 BadDrawable
+        # error and terminates the application. This also stops the
+        # JavaScript scroll poll while the preview is hidden.
+        web_view = self.web_view
+        self.web_view = None
+        if web_view is not None:
+            # Clear the reference first so a load-changed or scroll
+            # signal emitted during destruction is ignored.
+            web_view.destroy()
+
+            if was_shown:
+                self.preview_renderer.hide(web_view)
+
+        self.loading = False
+        self.page_ready = False
+        self.web_view_pending_html = None
+        self.web_view_pending_partial = False
 
     def update_preview_mode(self):
         self.preview_renderer.update_mode(self.web_view)
 
-    def on_load_changed(self, _web_view, event):
+    def on_load_changed(self, web_view, event):
+        if web_view is not self.web_view:
+            return
+
         if event == WebKit2.LoadEvent.STARTED:
             self.page_ready = False
         elif event == WebKit2.LoadEvent.FINISHED:
@@ -243,19 +281,20 @@ class PreviewHandler:
                 self.web_view_pending_html = None
                 self.web_view_pending_partial = False
                 self.__show(html=pending, step=Step.LOAD_WEBVIEW,
-                            partial=partial)
+                            partial=partial, generation=self._generation)
             else:
-                self.__show(step=Step.RENDER)
+                self.__show(step=Step.RENDER,
+                            generation=self._generation)
 
     def on_text_view_scrolled(self, _text_view, scale):
-        if self.shown and not math.isclose(scale,
-                                           self.web_view.get_scroll_scale(),
-                                           rel_tol=1e-4):
+        if self.shown and self.web_view is not None and not math.isclose(
+                scale, self.web_view.get_scroll_scale(), rel_tol=1e-4):
             self.web_view.set_scroll_scale(scale)
 
-    def on_web_view_scrolled(self, _web_view, scale):
-        if self.shown and self.text_view.get_mapped() and not math.isclose(
-                scale, self.text_view.get_scroll_scale(), rel_tol=1e-1):
+    def on_web_view_scrolled(self, web_view, scale):
+        if self.shown and web_view is self.web_view \
+                and self.text_view.get_mapped() and not math.isclose(
+                    scale, self.text_view.get_scroll_scale(), rel_tol=1e-1):
             self.text_view.set_scroll_scale(scale)
 
     @staticmethod

@@ -1,6 +1,6 @@
 project(
   'postrophe',
-  version: '2.5.1',
+  version: '3.0.0',
   meson_version: '>= 0.50.0'
 )
 

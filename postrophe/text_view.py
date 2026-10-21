@@ -220,7 +220,13 @@ class TextView(Gtk.TextView):
 
     def on_mark_set(self, _text_buffer, _location, mark, _data=None):
         if mark.get_name() == 'selection_bound':
-            self.markup.apply()
+            # Only focus mode reacts to cursor movement: it has to move
+            # the gray tag to the new sentence. Reapplying all markup
+            # here would needlessly inspect the whole buffer (and queue
+            # another parse while typing), because the text-change
+            # handler already does the full markup update.
+            if self.focus_mode:
+                self.markup.apply_focus()
             if not self.get_buffer().get_has_selection():
                 self.smooth_scroll_to(mark)
         elif mark.get_name() == 'gtk_drag_target':
@@ -229,7 +235,7 @@ class TextView(Gtk.TextView):
 
     def on_button_release_event(self, _widget, _event):
         if self.focus_mode:
-            self.markup.apply()
+            self.markup.apply_focus()
         return False
 
     def on_vadjustment_changed(self, *_):

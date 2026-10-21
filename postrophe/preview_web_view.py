@@ -25,11 +25,27 @@ class PreviewWebView(WebKit2.WebView):
 scale = {:.16f};
 write = {};
 
-// Configure MathJax.
+// Configure MathJax. MathJax 2 exposes MathJax.Hub, while MathJax 3+
+// only exposes MathJax.startup / MathJax.typesetPromise. Calling
+// MathJax.Hub.queue on version 3 throws and used to stop the scroll
+// synchronization loop for the rest of the page's lifetime.
 if (typeof hasMathJax === "undefined") {{
-    hasMathJax = typeof MathJax !== "undefined";
-    if (hasMathJax) {{
+    hasMathJax = false;
+    mathJaxReady = false;
+}}
+if (!hasMathJax && typeof MathJax !== "undefined") {{
+    hasMathJax = true;
+    if (MathJax.Hub && MathJax.Hub.Config) {{
         MathJax.Hub.Config({{ messageStyle: "none" }});
+        mathJaxReady = true;
+    }} else if (MathJax.startup && MathJax.startup.promise) {{
+        MathJax.startup.promise.then(function () {{
+            mathJaxReady = true;
+        }}).catch(function () {{
+            mathJaxReady = true;
+        }});
+    }} else {{
+        mathJaxReady = true;
     }}
 }}
 
@@ -37,9 +53,16 @@ if (typeof hasMathJax === "undefined") {{
 e = document.documentElement;
 canScroll = e.scrollHeight > e.clientHeight;
 wasRendered = typeof isRendered !== "undefined" && isRendered;
-isRendered = wasRendered ||
-        !hasMathJax ||
-        MathJax.Hub.queue.running == 0 && MathJax.Hub.queue.pending == 0;
+mathJaxBusy = false;
+if (hasMathJax) {{
+    if (MathJax.Hub && MathJax.Hub.queue) {{
+        mathJaxBusy = MathJax.Hub.queue.running != 0 ||
+                MathJax.Hub.queue.pending != 0;
+    }} else {{
+        mathJaxBusy = !mathJaxReady;
+    }}
+}}
+isRendered = wasRendered || !hasMathJax || !mathJaxBusy;
 
 // Write the current scroll if instructed or if it was just rendered.
 // scale < 0 means "unknown"; writing it would clamp to the top.
@@ -68,10 +91,17 @@ if (canScroll && isRendered) {{
 
     document.body.innerHTML = %s;
 
-    // Typeset the new content if the page uses MathJax.
+    // Typeset the new content if the page uses MathJax. Mark MathJax
+    // as busy until typesetting finishes, so scroll synchronization
+    // waits for the final layout (version 2 uses its queue instead).
     if (typeof MathJax !== "undefined") {
         if (MathJax.typesetPromise) {
-            MathJax.typesetPromise();
+            window.mathJaxReady = false;
+            MathJax.typesetPromise().then(function () {
+                window.mathJaxReady = true;
+            }).catch(function () {
+                window.mathJaxReady = true;
+            });
         } else if (MathJax.Hub) {
             MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
         }
@@ -118,6 +148,8 @@ if (canScroll && isRendered) {{
         self.connect("load-changed", self.on_load_changed)
         self.connect("load-failed", self.on_load_failed)
         self.connect("destroy", self.on_destroy)
+        self.connect("map", self.on_map)
+        self.connect("unmap", self.on_unmap)
 
         self.props.expand = True
 
@@ -190,6 +222,17 @@ if (canScroll && isRendered) {{
         self.state_loaded = False
         self.state_loop()
 
+    def on_map(self, *_):
+        # Polling is paused until the view is visible. Start it as soon
+        # as the preview is actually mapped.
+        if self.state_loaded:
+            self.state_loop(delay=0)
+
+    def on_unmap(self, *_):
+        if self.timeout_id:
+            GLib.source_remove(self.timeout_id)
+            self.timeout_id = None
+
     def sync_scroll_scale(self, scroll_scale, write):
         self.state_waiting = True
         self.run_javascript(
@@ -199,14 +242,34 @@ if (canScroll && isRendered) {{
 
     def finish_sync_scroll_scale(self, _web_view, result):
         self.state_waiting = False
-        result = self.run_javascript_finish(result)
-        self.state_loop(result.get_js_value().to_double())
+        try:
+            result = self.run_javascript_finish(result)
+            scroll_scale = result.get_js_value().to_double()
+        except GLib.Error:
+            # A JavaScript error must not stop scroll synchronization
+            # for the rest of the page's lifetime. Retry slowly.
+            if self.state_loaded and not self.state_load_failed:
+                self.timeout_id = GLib.timeout_add(
+                    250, self._retry_sync_scroll)
+            return
+        self.state_loop(scroll_scale)
+
+    def _retry_sync_scroll(self):
+        self.timeout_id = None
+        self.state_loop()
+        return False
 
     def state_loop(self, scroll_scale=None, delay=16):  # 16ms ~ 60hz
         # Remove any pending callbacks
         if self.timeout_id:
             GLib.source_remove(self.timeout_id)
             self.timeout_id = None
+
+        # Do not run JavaScript while the preview is not visible.
+        # PreviewHandler destroys the view on hide; this also covers
+        # the short period before the view is inserted and mapped.
+        if self.state_loaded and not self.get_mapped():
+            return
 
         # Set scroll scale if specified, and the state is not dirty
         if not self.state_discard_read and scroll_scale not in (

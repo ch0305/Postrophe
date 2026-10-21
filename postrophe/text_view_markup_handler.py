@@ -112,7 +112,10 @@ class MarkupHandler:
                 *args)
         }
 
-        # Focus mode.
+        # Focus mode. The sentence whose gray tag is currently applied is
+        # cached, so moving the cursor within one sentence does not touch
+        # the whole buffer.
+        self._focus_sentence = None
         self.tag_unfocused_text = buffer.create_tag(self.TAG_NAME_UNFOCUSED_TEXT,
                                                     foreground='gray',
                                                     weight=Pango.Weight.NORMAL,
@@ -140,7 +143,7 @@ class MarkupHandler:
         self.parent_conn, child_conn = context.Pipe()
         context.Process(
             target=self.parse, args=(child_conn,), daemon=True).start()
-        GLib.io_add_watch(
+        self.parent_watch_id = GLib.io_add_watch(
             self.parent_conn.fileno(),
             GLib.PRIORITY_DEFAULT,
             GLib.IO_IN,
@@ -324,7 +327,8 @@ class MarkupHandler:
             if self.parent_conn.poll():
                 self.do_apply(*self.parent_conn.recv())
             return True
-        except EOFError:
+        except (EOFError, OSError):
+            self.parent_watch_id = None
             return False
 
     def do_apply(self, original_text, result=[]):
@@ -358,17 +362,52 @@ class MarkupHandler:
                     buffer.get_iter_at_offset(tag_end))
 
         # Apply focus mode tag (grey out before/after current sentence).
+        # Force an update: the text may have changed since the last call.
+        self.apply_focus(force=True)
+
+    def _focus_sentence_bounds(self):
+        buffer = self.text_buffer
+        cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
+
+        start_sentence = cursor_iter.copy()
+        if not start_sentence.starts_sentence():
+            start_sentence.backward_sentence_start()
+
+        end_sentence = cursor_iter.copy()
+        if not end_sentence.ends_sentence():
+            end_sentence.forward_sentence_end()
+
+        return start_sentence, end_sentence
+
+    def apply_focus(self, force=False):
+        """Update the focus-mode gray tag without re-parsing the text.
+
+        Cursor movement only needs to change the tag on the sentence
+        before and after the cursor. Calling apply() for that would run
+        a buffer-wide tag update on every arrow key (and, while parsing,
+        queue a second parse)."""
+
+        buffer = self.text_buffer
+        start = buffer.get_start_iter()
+        end = buffer.get_end_iter()
+
+        if not self.text_view.focus_mode:
+            if force or self._focus_sentence is not None:
+                buffer.remove_tag(self.tag_unfocused_text, start, end)
+            self._focus_sentence = None
+            return
+
+        start_sentence, end_sentence = self._focus_sentence_bounds()
+        key = (start_sentence.get_offset(), end_sentence.get_offset())
+        if not force and key == self._focus_sentence:
+            return
+
         buffer.remove_tag(self.tag_unfocused_text, start, end)
-        if self.text_view.focus_mode:
-            cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
-            start_sentence = cursor_iter.copy()
-            if not start_sentence.starts_sentence():
-                start_sentence.backward_sentence_start()
-            end_sentence = cursor_iter.copy()
-            if not end_sentence.ends_sentence():
-                end_sentence.forward_sentence_end()
+        if start_sentence.get_offset() > 0:
             buffer.apply_tag(self.tag_unfocused_text, start, start_sentence)
+        if end_sentence.get_offset() < end.get_offset():
             buffer.apply_tag(self.tag_unfocused_text, end_sentence, end)
+        self._focus_sentence = key
 
     # Margin and indent are cumulative. They differ in two ways:
     # * Margin is always in the beginning,
@@ -421,4 +460,12 @@ class MarkupHandler:
             tag.set_properties(left_margin=margin, indent=indent)
 
     def stop(self, *_):
-        self.parent_conn.close()
+        # Remove the IO watch before closing the pipe. Otherwise the
+        # watch can fire one last time while the window is being
+        # destroyed and raise OSError("handle is closed").
+        if self.parent_watch_id:
+            GLib.source_remove(self.parent_watch_id)
+            self.parent_watch_id = None
+        if self.parent_conn is not None:
+            self.parent_conn.close()
+            self.parent_conn = None

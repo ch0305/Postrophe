@@ -17,6 +17,10 @@ class StatsHandler:
     PARAGRAPHS = 3
     READ_TIME = 4
 
+    # Counting the entire buffer on every keypress is expensive and the
+    # result is only visible on the status bar, so wait for a short pause.
+    COUNT_DELAY = 250  # ms
+
     def __init__(self, stats_button, text_view):
         super().__init__()
 
@@ -25,6 +29,7 @@ class StatsHandler:
         self.stats_button.connect("destroy", self.on_destroy)
 
         self.text_view = text_view
+        self.count_timeout_id = None
         self.text_view.get_buffer().connect("changed", self.on_text_changed)
 
         self.popover = None
@@ -63,11 +68,19 @@ class StatsHandler:
         self.text_view.grab_focus()
 
     def on_text_changed(self, buf):
+        if self.count_timeout_id:
+            GLib.source_remove(self.count_timeout_id)
+        self.count_timeout_id = GLib.timeout_add(
+            self.COUNT_DELAY, self._count_text, buf)
+
+    def _count_text(self, buf):
+        self.count_timeout_id = None
         self.stats_counter.count(
             buf.get_text(
                 buf.get_start_iter(),
                 buf.get_end_iter(),
                 False))
+        return False
 
     def get_text_for_stat(self, stat):
         if stat == self.CHARACTERS:
@@ -100,4 +113,7 @@ class StatsHandler:
             self.popover.popdown()
 
     def on_destroy(self, _widget):
+        if self.count_timeout_id:
+            GLib.source_remove(self.count_timeout_id)
+            self.count_timeout_id = None
         self.stats_counter.stop()
