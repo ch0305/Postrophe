@@ -16,7 +16,8 @@
 
 import re
 import os
-import telnetlib
+import socket
+import time
 from gettext import gettext as _
 from urllib.parse import unquote
 
@@ -33,13 +34,87 @@ from postrophe import latex_to_PNG, markup_regex
 from postrophe.settings import Settings
 
 
+class _TelnetClient:
+    """Minimal telnet client, replacing the removed ``telnetlib``.
+
+    Python 3.13 dropped ``telnetlib`` (PEP 594), and this dictionary lookup
+    only needs a TCP stream with IAC option negotiations stripped, so it
+    implements just ``write()``, ``expect()`` and ``close()``.
+    """
+
+    IAC = 255
+    _IAC_SB = 250
+    _IAC_SE = 240
+    _IAC_WILL_WONT_DO_DONT = (251, 252, 253, 254)
+
+    def __init__(self, host, port, timeout=60):
+        self._socket = socket.create_connection((host, port), timeout)
+        self._socket.settimeout(timeout)
+        self._buffer = b""
+        self._iac_state = 0
+
+    def write(self, data):
+        self._socket.sendall(data)
+
+    def expect(self, regexes, timeout=60):
+        """Return ``(index, match, data_before_match)`` for the first match."""
+        deadline = time.monotonic() + timeout
+        while True:
+            for index, regex in enumerate(regexes):
+                match = regex.search(self._buffer)
+                if match:
+                    data = self._buffer[:match.start()]
+                    self._buffer = self._buffer[match.end():]
+                    return index, match, data
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for server response")
+            self._socket.settimeout(remaining)
+            chunk = self._socket.recv(4096)
+            if not chunk:
+                raise EOFError("connection closed by server")
+            self._buffer += self._strip_iac(chunk)
+
+    def close(self):
+        self._socket.close()
+
+    def _strip_iac(self, data):
+        """Drop telnet command sequences, keeping only payload bytes."""
+        out = bytearray()
+        for byte in data:
+            state = self._iac_state
+            if state == 0:
+                if byte == self.IAC:
+                    self._iac_state = 1
+                else:
+                    out.append(byte)
+            elif state == 1:  # right after IAC
+                if byte == self.IAC:
+                    out.append(byte)
+                    self._iac_state = 0
+                elif byte in self._IAC_WILL_WONT_DO_DONT:
+                    self._iac_state = 2
+                elif byte == self._IAC_SB:
+                    self._iac_state = 3
+                else:
+                    self._iac_state = 0
+            elif state == 2:  # option byte of WILL/WONT/DO/DONT
+                self._iac_state = 0
+            elif state == 3:  # inside subnegotiation
+                if byte == self.IAC:
+                    self._iac_state = 4
+            else:  # IAC inside subnegotiation
+                self._iac_state = 0 if byte == self._IAC_SE else 3
+        return bytes(out)
+
+
 class DictAccessor:
     reEndResponse = re.compile(br"^[2-5][0-58][0-9] .*\r\n$", re.DOTALL +
                                re.MULTILINE)
     reDefinition = re.compile(br"^151(.*?)^\.", re.DOTALL + re.MULTILINE)
 
     def __init__(self, host="dict.dict.org", port=2628, timeout=60):
-        self.telnet = telnetlib.Telnet(host, port)
+        self.telnet = _TelnetClient(host, port)
         self.timeout = timeout
         self.login_response = self.telnet.expect([self.reEndResponse],
                                                  self.timeout)[2]

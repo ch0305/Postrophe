@@ -17,7 +17,7 @@
 from gi.repository import Pango
 from gi.repository import Gtk, GLib
 import re
-from multiprocessing import Pipe, Process
+from multiprocessing import get_context
 
 import gi
 
@@ -132,8 +132,14 @@ class MarkupHandler:
         # Worker process to handle parsing.
         self.parsing = False
         self.apply_pending = False
-        self.parent_conn, child_conn = Pipe()
-        Process(target=self.parse, args=(child_conn,), daemon=True).start()
+        # Python 3.14 changed the default start method on Linux from "fork"
+        # to "forkserver", which pickles the target and fails because this
+        # handler holds a GTK TextView.  The worker only needs the pipe and
+        # the regexes, so keep forking.
+        context = get_context("fork")
+        self.parent_conn, child_conn = context.Pipe()
+        context.Process(
+            target=self.parse, args=(child_conn,), daemon=True).start()
         GLib.io_add_watch(
             self.parent_conn.fileno(),
             GLib.PRIORITY_DEFAULT,

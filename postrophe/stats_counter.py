@@ -1,5 +1,5 @@
 import re
-from multiprocessing import Process, Pipe
+from multiprocessing import get_context
 
 from gi.repository import GLib
 
@@ -46,11 +46,15 @@ class StatsCounter:
     def __init__(self, callback):
         super().__init__()
 
-        # Worker process to handle counting.
+        # Worker process to handle counting.  The "fork" start method is
+        # required because the target is a bound method of a GTK object that
+        # cannot be pickled; Python 3.14 defaults to "forkserver" on Linux.
         self.counting = False
         self.count_pending_text = None
-        self.parent_conn, child_conn = Pipe()
-        Process(target=self.do_count, args=(child_conn,), daemon=True).start()
+        context = get_context("fork")
+        self.parent_conn, child_conn = context.Pipe()
+        context.Process(
+            target=self.do_count, args=(child_conn,), daemon=True).start()
         GLib.io_add_watch(
             self.parent_conn.fileno(), GLib.PRIORITY_LOW, GLib.IO_IN,
             self.on_counted, callback)
