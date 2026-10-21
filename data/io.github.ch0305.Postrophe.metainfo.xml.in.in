@@ -35,6 +35,15 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release type="stable" version="3.0.1" date="2026-10-22T00:00:00Z">
+      <description>
+        <p>This release fixes the preview turning black after switching layouts:</p>
+        <ul>
+          <li>Switching between split, full-width and windowed previews recreates the WebView instead of reparenting it, so WebKit keeps painting on Wayland</li>
+          <li>The preview scroll position is kept across the layout change</li>
+        </ul>
+      </description>
+    </release>
     <release type="stable" version="3.0.0" date="2026-10-22T00:00:00Z">
       <description>
         <p>This release fixes window sizing, the windowed preview, fullscreen state and typing performance:</p>

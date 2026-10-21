@@ -74,6 +74,11 @@ class PreviewHandler:
         self.page_ready = False
         self.web_view_pending_partial = False
 
+        # Scroll position to apply to the next rendered preview. Layout
+        # changes recreate the WebView, so the old position cannot be
+        # read from the editor after the window has been resized.
+        self.pending_scroll_scale = None
+
         # Editor text the currently displayed preview was built from.
         self.preview_source_text = None
 
@@ -153,7 +158,17 @@ class PreviewHandler:
                 self.text_view.get_buffer().connect(
                     "changed", self.on_text_changed)
 
-            GLib.idle_add(self.web_view.set_scroll_scale, self.text_view.get_scroll_scale())
+            if self.pending_scroll_scale is not None:
+                scale = self.pending_scroll_scale
+                self.pending_scroll_scale = None
+            else:
+                scale = self.text_view.get_scroll_scale()
+            GLib.idle_add(self.web_view.set_scroll_scale, scale)
+            # WebKit restores its own scroll position around the first
+            # map, which can undo the write above. Apply the position
+            # once more after the page has been painted.
+            GLib.timeout_add(
+                200, self.__restore_scroll, self.web_view, scale)
 
             self.preview_renderer.show(self.web_view)
 
@@ -218,6 +233,7 @@ class PreviewHandler:
         # WebView and keep polling in the background.
         self._generation += 1
         self.__cancel_pending_conversion()
+        self.pending_scroll_scale = None
 
         was_shown = self.shown
         if was_shown:
@@ -264,7 +280,38 @@ class PreviewHandler:
         self.web_view_pending_partial = False
 
     def update_preview_mode(self):
-        self.preview_renderer.update_mode(self.web_view)
+        mode = self.settings.get_enum("preview-mode")
+        if mode == self.preview_renderer.mode:
+            return
+
+        # Do not reparent the live WebView between the main content box
+        # and the preview toplevel. WebKitGTK ties its rendering surface
+        # to the toplevel it was created in; reparenting works on X11 but
+        # leaves a black surface on Wayland. Recreate the view instead,
+        # keeping the preview action active.
+
+        # Restoring the editor's size after hide() can change its scroll
+        # scale, so remember the preview's own position first.
+        scroll_scale = None
+        if self.shown and self.web_view is not None:
+            scroll_scale = self.web_view.get_scroll_scale()
+            if scroll_scale < 0:
+                scroll_scale = None
+
+        was_active = self.shown or self.web_view is not None
+        if was_active:
+            self.hide()
+
+        self.preview_renderer.update_mode()
+
+        if was_active:
+            self.pending_scroll_scale = scroll_scale
+            self.show()
+
+    def __restore_scroll(self, web_view, scale):
+        if self.shown and web_view is self.web_view:
+            web_view.set_scroll_scale(scale)
+        return False
 
     def on_load_changed(self, web_view, event):
         if web_view is not self.web_view:

@@ -292,17 +292,14 @@ class PreviewRenderer:
             self.content.set_size_request(-1, -1)
             self._clamp_main_window()
 
-    def update_mode(self, web_view=None):
-        """Update preview mode, adjusting the mode button
-        and the preview itself."""
+    def update_mode(self):
+        """Read the selected preview mode.
 
-        mode = self.settings.get_enum("preview-mode")
-        if web_view is not None and mode != self.mode:
-            self.hide(web_view)
-            self.mode = mode
-            self.show(web_view)
-        else:
-            self.mode = mode
+        Showing/hiding in the new mode is handled by PreviewHandler:
+        it recreates the WebView so WebKitGTK does not lose its render
+        surface when the preview moves between windows on Wayland."""
+
+        self.mode = self.settings.get_enum("preview-mode")
 
     def on_window_closed(self, window, _event):
         application = window.get_application()

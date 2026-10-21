@@ -1,3 +1,13 @@
+Version 3.0.1 (Postrophe)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+Released: 2026-10-22
+
+Bugfixes:
+- Switching between preview layouts no longer leaves a black preview.
+  The WebView is recreated for the new layout instead of being moved
+  between the main and preview windows, which lost its rendering surface
+  on Wayland; the scroll position is kept
+
 Version 3.0.0 (Postrophe)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Released: 2026-10-22
