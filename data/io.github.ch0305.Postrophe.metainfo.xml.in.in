@@ -35,6 +35,16 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release type="stable" version="2.5.1" date="2026-10-22T00:00:00Z">
+      <description>
+        <p>This release fixes startup on Python 3.13 and newer:</p>
+        <ul>
+          <li>Works on Ubuntu 26.04 and other distributions with Python 3.14</li>
+          <li>The dictionary lookup no longer needs the removed telnetlib module</li>
+          <li>The launcher uses the system Python, so PyGObject is always found</li>
+        </ul>
+      </description>
+    </release>
     <release type="stable" version="2.5.0" date="2026-10-19T00:00:00Z">
       <description>
         <p>First Postrophe release. Based on Apostrophe 2.4, with:</p>

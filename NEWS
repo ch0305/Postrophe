@@ -1,3 +1,15 @@
+Version 2.5.1 (Postrophe)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+Released: 2026-10-22
+
+Bugfixes:
+- Start on Python 3.13 and newer, including Ubuntu 26.04: the dictionary
+  lookup no longer depends on the removed telnetlib module
+- The launcher runs with the system Python, so a uv or conda python earlier
+  in PATH can no longer hide PyGObject
+- Markup highlighting and statistics keep working on Python 3.14, which
+  changed the default multiprocessing start method
+
 Version 2.5.0 (Postrophe)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Released: 2026-10-19
